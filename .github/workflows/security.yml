@@ -39,7 +39,7 @@ jobs:
           govulncheck ./... || echo "Vulnerabilities found"
 
       - name: Upload vulnerability report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: govulncheck-report
           path: vuln-report.json
@@ -137,7 +137,7 @@ jobs:
             > license-report.csv 2>/dev/null || true
 
       - name: Upload license report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: license-report
           path: license-report.csv
