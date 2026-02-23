@@ -1,0 +1,143 @@
+name: Security Audit
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"    # Every Monday at 08:00 UTC
+  workflow_dispatch:         # Allow manual trigger
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+
+env:
+  GO_VERSION: "1.22"
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. Vulnerability scan - Go dependencies
+  # ──────────────────────────────────────────────────────────────────────────
+  govulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run govulncheck
+        id: vuln
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck -json ./... > vuln-report.json 2>&1 || true
+          # Print human-readable output too
+          govulncheck ./... || echo "Vulnerabilities found"
+
+      - name: Upload vulnerability report
+        uses: actions/upload-artifact@v4
+        with:
+          name: govulncheck-report
+          path: vuln-report.json
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. Static security analysis (Gosec)
+  # ──────────────────────────────────────────────────────────────────────────
+  gosec:
+    name: Gosec Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Gosec
+        uses: securego/gosec@master
+        with:
+          args: >
+            -exclude=G304,G204
+            -severity=medium
+            -confidence=medium
+            -fmt=sarif
+            -out=gosec-results.sarif
+            ./...
+        continue-on-error: true
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. CodeQL analysis
+  # ──────────────────────────────────────────────────────────────────────────
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+          queries: security-extended
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build for CodeQL
+        run: go build ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: codeql-go
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. License compliance check
+  # ──────────────────────────────────────────────────────────────────────────
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Check licenses
+        run: |
+          go-licenses check ./... \
+            --allowed_licenses=Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0 \
+            --ignore=github.com/istio-doctor
+
+      - name: Save license report
+        run: |
+          go-licenses report ./... \
+            --ignore=github.com/istio-doctor \
+            > license-report.csv 2>/dev/null || true
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: license-report.csv

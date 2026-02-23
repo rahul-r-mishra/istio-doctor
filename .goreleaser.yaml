@@ -1,0 +1,200 @@
+# .goreleaser.yaml
+# Documentation: https://goreleaser.com/customization/
+
+version: 2
+
+project_name: istio-doctor
+
+# ──────────────────────────────────────────────────────────────────────────
+# Build
+# ──────────────────────────────────────────────────────────────────────────
+builds:
+  - id: istio-doctor
+    main: .
+    binary: istio-doctor
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Skip windows/arm64 - not a common deployment target
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/istio-doctor/pkg/version.Version={{.Version}}
+      - -X github.com/istio-doctor/pkg/version.Commit={{.Commit}}
+      - -X github.com/istio-doctor/pkg/version.BuildDate={{.Date}}
+      - -X github.com/istio-doctor/pkg/version.BuiltBy=goreleaser
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+# ──────────────────────────────────────────────────────────────────────────
+# Archives
+# ──────────────────────────────────────────────────────────────────────────
+archives:
+  - id: default
+    builds: [istio-doctor]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - profiles/default.yaml
+
+# ──────────────────────────────────────────────────────────────────────────
+# Checksums
+# ──────────────────────────────────────────────────────────────────────────
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# ──────────────────────────────────────────────────────────────────────────
+# Signing (cosign via keyless OIDC)
+# ──────────────────────────────────────────────────────────────────────────
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+# ──────────────────────────────────────────────────────────────────────────
+# Docker images (GoReleaser also handles this, complementing the workflow)
+# ──────────────────────────────────────────────────────────────────────────
+dockers:
+  - image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:latest-amd64"
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+    goarch: amd64
+
+  - image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:latest-arm64"
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:latest"
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:latest-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:latest-arm64"
+
+# ──────────────────────────────────────────────────────────────────────────
+# Changelog
+# ──────────────────────────────────────────────────────────────────────────
+changelog:
+  use: github
+  sort: asc
+  abbrev: 0
+  groups:
+    - title: "🚀 Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "⚡ Performance"
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "🔒 Security"
+      regexp: '^.*?sec(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: "🧹 Chores & Deps"
+      regexp: '^.*?(chore|deps|build)(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: "📖 Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 5
+    - title: "Other"
+      order: 999
+  filters:
+    exclude:
+      - "^Merge pull request"
+      - "^Merge branch"
+      - "^Revert"
+      - "typo"
+
+# ──────────────────────────────────────────────────────────────────────────
+# GitHub Release
+# ──────────────────────────────────────────────────────────────────────────
+release:
+  github:
+    owner: rahul-r-mishra
+    name: istio-doctor
+  prerelease: auto         # auto-detect from tag (v1.0.0-rc.1 → pre-release)
+  make_latest: true
+  name_template: "{{ .Tag }}"
+  header: |
+    ## istio-doctor {{ .Tag }}
+
+    Production-grade Istio debugging utility for large-scale Kubernetes clusters.
+
+    > **Quick install:**
+    > ```bash
+    > # Linux (amd64)
+    > curl -Lo istio-doctor \
+    >   https://github.com/rahul-r-mishra/istio-doctor/releases/download/{{ .Tag }}/istio-doctor_linux_x86_64.tar.gz
+    > tar -xzf istio-doctor_linux_x86_64.tar.gz && chmod +x istio-doctor
+    > sudo mv istio-doctor /usr/local/bin/
+    >
+    > # Docker
+    > docker pull ghcr.io/rahul-r-mishra/istio-doctor:{{ .Tag }}
+    > ```
+  footer: |
+    **Full Changelog**: https://github.com/rahul-r-mishra/istio-doctor/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+# ──────────────────────────────────────────────────────────────────────────
+# SBOM (Software Bill of Materials)
+# ──────────────────────────────────────────────────────────────────────────
+sboms:
+  - artifacts: archive
+    documents:
+      - "${artifact}.sbom.json"
+
+# ──────────────────────────────────────────────────────────────────────────
+# Announce (optional - uncomment to announce releases to Slack)
+# ──────────────────────────────────────────────────────────────────────────
+# announce:
+#   slack:
+#     enabled: true
+#     message_template: |
+#       🩺 *istio-doctor {{ .Tag }}* released!
+#       {{ .ReleaseURL }}

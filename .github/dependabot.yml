@@ -1,0 +1,96 @@
+version: 2
+
+updates:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Go modules
+  # ──────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Dublin
+    open-pull-requests-limit: 10
+    # Group all minor/patch updates together to reduce PR noise
+    groups:
+      istio-deps:
+        patterns:
+          - "istio.io/*"
+        update-types:
+          - minor
+          - patch
+      k8s-deps:
+        patterns:
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+        update-types:
+          - minor
+          - patch
+      all-other-deps:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "istio.io/*"
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+        update-types:
+          - minor
+          - patch
+    # Keep major version updates as individual PRs for careful review
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps(dev)"
+      include: scope
+    labels:
+      - dependencies
+      - go
+    assignees:
+      - rahul-r-mishra
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # GitHub Actions
+  # ──────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    groups:
+      # Group all action patch/minor updates into one PR
+      github-actions-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "ci"
+      include: scope
+    labels:
+      - dependencies
+      - github-actions
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Docker base images
+  # ──────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build(docker)"
+      include: scope
+    labels:
+      - dependencies
+      - docker
