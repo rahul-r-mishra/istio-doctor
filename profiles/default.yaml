@@ -1,0 +1,57 @@
+# istio-doctor default check profile
+# Copy to ~/.istio-doctor.yaml and customize
+
+# Kubernetes settings
+kubeconfig: ""      # Default: $KUBECONFIG or ~/.kube/config
+context: ""         # Default: current context
+
+# Parallelism
+workers: 50         # Concurrent pod collectors. Tune for cluster size:
+                    # 50k pods → 50-100 workers
+                    # 10k pods → 30-50 workers
+timeout: 60         # Default timeout seconds per command
+
+# Output
+output: table       # table | json | yaml | prometheus
+no-color: false
+
+# Data plane
+stale-threshold: 30.0   # Seconds before proxy is flagged as stale
+
+# Profiles define named sets of checks
+profiles:
+  quick:
+    description: "Fast cluster overview (control plane + gateway pods only)"
+    checks:
+      - controlplane
+      - gateway
+    timeout: 30
+    workers: 20
+
+  deep:
+    description: "Full cluster analysis including all proxy states"
+    checks:
+      - all
+    timeout: 120
+    workers: 100
+    stale-threshold: 10.0
+
+  gateway-only:
+    description: "Gateway configuration validation"
+    checks:
+      - gateway
+    timeout: 45
+
+  security:
+    description: "Security-focused: authz policies and mTLS"
+    checks:
+      - config
+    timeout: 60
+
+  ci:
+    description: "CI pipeline check - exits non-zero on any finding >= WARN"
+    checks:
+      - all
+    output: json
+    timeout: 90
+    fail-on: WARN    # WARN | ERROR | CRITICAL
