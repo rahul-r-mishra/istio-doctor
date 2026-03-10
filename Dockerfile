@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /bin/istio-doctor .
 
 # ────────────────────────────────────────────────────────────────────────────
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN apk add --no-cache ca-certificates kubectl
 
